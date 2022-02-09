@@ -219,19 +219,23 @@ public class TupleDesc implements Serializable {
 
     public boolean equals(Object o) {
         // some code goes here
-        if (o.getClass() != TupleDesc.class) {
-            return false;
+        if (this == o) {
+            return true;
         }
-        TupleDesc td = (TupleDesc) o;
-        if (td.numFields() != this.numFields() || td.getSize() != this.getSize()) {
-            return false;
-        }
-        for(int i = 0; i < td.numFields(); i++) {
-            if (td.getFieldType(i) != this.getFieldType(i)) {
+        if (o instanceof TupleDesc) {
+            TupleDesc td = (TupleDesc) o;
+            if (td.numFields() != this.numFields() || td.getSize() != this.getSize()) {
                 return false;
             }
+            for(int i = 0; i < td.numFields(); i++) {
+                if (td.getFieldType(i) != this.getFieldType(i)) {
+                    return false;
+                }
+            }
+            return true;
         }
-        return true;
+
+        return false;
     }
 
     public int hashCode() {
