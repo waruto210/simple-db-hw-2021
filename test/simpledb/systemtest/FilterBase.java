@@ -46,14 +46,14 @@ public abstract class FilterBase extends SimpleDbTestBase {
         HeapFile f = createTable(column, columnValue);
         Predicate predicate = new Predicate(column, operation, new IntField(trueValue));
         assertEquals(ROWS, runTransactionForPredicate(f, predicate));
-        f = Utility.openHeapFile(COLUMNS, f.getFile());
+        f = Utility.openHeapFile(COLUMNS, f.getHeapFile());
         validateAfter(f);
 
         // Test the false value
         f = createTable(column, columnValue);
         predicate = new Predicate(column, operation, new IntField(falseValue));
         assertEquals(0, runTransactionForPredicate(f, predicate));
-        f = Utility.openHeapFile(COLUMNS, f.getFile());
+        f = Utility.openHeapFile(COLUMNS, f.getHeapFile());
         validateAfter(f);
     }
 

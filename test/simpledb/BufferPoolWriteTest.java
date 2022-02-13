@@ -42,7 +42,7 @@ public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
     		List<Page> dirtypages = new ArrayList<>();
     		for(int i = 0; i < duplicates; i++) {
     			// create a blank page
-    			BufferedOutputStream bw = new BufferedOutputStream(new FileOutputStream(super.getFile(), true));
+    			BufferedOutputStream bw = new BufferedOutputStream(new FileOutputStream(super.getHeapFile(), true));
                 byte[] emptyData = HeapPage.createEmptyPageData();
                 bw.write(emptyData);
                 bw.close();
@@ -124,7 +124,7 @@ public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
     }
     
     @Test public void handleManyDirtyPages() throws Exception {
-    	HeapFileDuplicates hfd = new HeapFileDuplicates(empty.getFile(), empty.getTupleDesc(), 10);
+    	HeapFileDuplicates hfd = new HeapFileDuplicates(empty.getHeapFile(), empty.getTupleDesc(), 10);
     	Database.getCatalog().addTable(hfd, SystemTestUtil.getUUID());
     	Database.getBufferPool().insertTuple(tid, hfd.getId(), Utility.getHeapTuple(1, 2));
     	
