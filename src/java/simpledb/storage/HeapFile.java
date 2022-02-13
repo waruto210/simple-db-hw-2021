@@ -156,8 +156,10 @@ public class HeapFile implements DbFile {
         int pageNo = pid.getPageNumber();
         byte[] data = new byte[pageSize];
         try {
-            RandomAccessFile raf = new RandomAccessFile(heapFile, "r");
-            raf.readFully(data, pageNo * pageSize, pageSize);
+            RandomAccessFile raf = new RandomAccessFile(heapFile, "rw");
+            raf.seek((long) pageNo * pageSize);
+            raf.readFully(data, 0, pageSize);
+//            System.out.println("pageSize: " + pageSize + " pageNum: " + pageNo + " fileSize: " + heapFile.length());
             return new HeapPage((HeapPageId) pid, data);
         } catch (IOException e) {
             e.printStackTrace();
