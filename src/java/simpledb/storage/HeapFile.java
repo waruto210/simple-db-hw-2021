@@ -30,7 +30,6 @@ public class HeapFile implements DbFile {
         private HeapPage currPage;
         private Iterator<Tuple> it;
 
-        private boolean closed;
         private boolean opened;
 
 
@@ -42,7 +41,6 @@ public class HeapFile implements DbFile {
             this.currPgNo = 0;
             this.currPage = null;
             this.it = null;
-            this.closed = false;
             this.opened = false;
         }
 
@@ -59,7 +57,7 @@ public class HeapFile implements DbFile {
 
         @Override
         protected Tuple readNext() throws DbException, TransactionAbortedException {
-            if (closed || !opened) {
+            if (!opened) {
                 return null;
             }
             if (it != null && it.hasNext()) {
@@ -89,7 +87,7 @@ public class HeapFile implements DbFile {
         @Override
         public void close() {
             super.close();
-            closed = true;
+            opened = false;
             it = null;
             currPage = null;
             tid = null;

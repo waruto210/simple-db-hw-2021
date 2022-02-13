@@ -28,10 +28,10 @@ public class Tuple implements Serializable {
     public Tuple(TupleDesc td) {
         // some code goes here
         this.td = td;
-        int len = td.numFields();
-        fields = new Field[len];
+        int numFields = td.numFields();
+        fields = new Field[numFields];
         Iterator<TupleDesc.TDItem> it = td.iterator();
-        for (int i = 0; i < len; i++) {
+        for (int i = 0; i < numFields; i++) {
             TupleDesc.TDItem item = it.next();
             switch (item.fieldType) {
                 case INT_TYPE:
@@ -86,6 +86,17 @@ public class Tuple implements Serializable {
     public void setField(int i, Field f) {
         // some code goes here
         fields[i] = f;
+    }
+
+    public void fromJoinTwoTuples(Tuple t1, Tuple t2) {
+        assert (this.getTupleDesc().numFields() == t1.getTupleDesc().numFields() + t2.getTupleDesc().numFields());
+        int i = 0;
+        for (int j = 0; j < t1.getTupleDesc().numFields(); j++) {
+            setField(i++, t1.getField(j));
+        }
+        for (int j = 0; j < t2.getTupleDesc().numFields(); j++) {
+            setField(i++, t2.getField(j));
+        }
     }
 
     /**
