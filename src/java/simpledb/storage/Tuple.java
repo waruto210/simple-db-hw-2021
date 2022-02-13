@@ -38,7 +38,7 @@ public class Tuple implements Serializable {
                     fields[i] = new IntField(0);
                     break;
                 case STRING_TYPE:
-                    fields[i] = new StringField(new String(""), Type.STRING_LEN);
+                    fields[i] = new StringField("", Type.STRING_LEN);
                     break;
                 default:
                     System.out.println("unknown fieldType");

@@ -2,7 +2,6 @@ package simpledb.storage;
 
 import simpledb.common.Database;
 import simpledb.common.DbException;
-import simpledb.common.Debug;
 import simpledb.common.Catalog;
 import simpledb.transaction.TransactionId;
 
@@ -73,8 +72,8 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
-
+        int tupleSize = td.getSize();
+        return (int) Math.floor((double)(BufferPool.getPageSize()*8) / (double)(tupleSize * 8 + 1));
     }
 
     /**
@@ -84,8 +83,8 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
-                 
+//        return 0;
+        return (int) Math.ceil((double) getNumTuples() / 8);
     }
     
     /** Return a view of this page before it was modified
@@ -118,7 +117,8 @@ public class HeapPage implements Page {
      */
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+//    throw new UnsupportedOperationException("implement this");
+        return pid;
     }
 
     /**
@@ -283,12 +283,33 @@ public class HeapPage implements Page {
         return null;      
     }
 
+    private static int numOfZeros(byte x) {
+        int count = 0;
+        while (x != 0) {
+            count++;
+            x &= (x - 1);
+        }
+        return 8 - count;
+    }
+
     /**
      * Returns the number of empty slots on this page.
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int numEmptySlots = 0;
+        for (int i = 0; i < header.length - 1; i++) {
+            numEmptySlots += numOfZeros(header[i]);
+        }
+        int remainBits = numSlots - (header.length - 1) * 8;
+        byte lastByte = header[header.length - 1];
+        for (int i = 0; i < remainBits; i++) {
+            if ((lastByte & 1) == 0) {
+                numEmptySlots++;
+            }
+            lastByte >>= 1;
+        }
+        return numEmptySlots;
     }
 
     /**
@@ -296,7 +317,10 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+//        return false;
+        int bytePos = i / 8;
+        int bitPos = i % 8;
+        return (header[bytePos] & (1 << bitPos)) != 0;
     }
 
     /**
@@ -313,7 +337,9 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+//        return null;
+        return Arrays.stream(tuples)
+                .filter(tup -> tup != null && isSlotUsed(tup.getRecordId().getTupleNumber())).iterator();
     }
 
 }
