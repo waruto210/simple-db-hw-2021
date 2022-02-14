@@ -14,6 +14,16 @@ public class IntField implements Field {
 
     private final int value;
 
+    public static Field add(Field a, Field b) {
+        assert (a instanceof IntField && b instanceof IntField);
+        return new IntField(((IntField) a).getValue() + ((IntField) b).getValue());
+    }
+
+    public static Field add(Field a, int b) {
+        assert (a instanceof IntField);
+        return new IntField(((IntField) a).getValue() + b);
+    }
+
     public int getValue() {
         return value;
     }

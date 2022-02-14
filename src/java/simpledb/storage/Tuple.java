@@ -30,21 +30,6 @@ public class Tuple implements Serializable {
         this.td = td;
         int numFields = td.numFields();
         fields = new Field[numFields];
-        Iterator<TupleDesc.TDItem> it = td.iterator();
-        for (int i = 0; i < numFields; i++) {
-            TupleDesc.TDItem item = it.next();
-            switch (item.fieldType) {
-                case INT_TYPE:
-                    fields[i] = new IntField(0);
-                    break;
-                case STRING_TYPE:
-                    fields[i] = new StringField("", Type.STRING_LEN);
-                    break;
-                default:
-                    System.out.println("unknown fieldType");
-                    break;
-            }
-        }
     }
 
     /**
