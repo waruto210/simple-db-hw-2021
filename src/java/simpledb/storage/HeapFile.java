@@ -105,6 +105,11 @@ public class HeapFile implements DbFile {
      */
     public HeapFile(File f, TupleDesc td) {
         // some code goes here
+        try {
+            f.createNewFile();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         this.heapFile = f;
         this.td = td;
     }
@@ -193,6 +198,7 @@ public class HeapFile implements DbFile {
         // not necessary for lab1
         BufferPool bufferPool = Database.getBufferPool();
         int numPages = numPages();
+        // found the first page that has empty slot
         for (int i = 0; i < numPages; i++) {
             PageId tmp = new HeapPageId(getId(), i);
             HeapPage page = (HeapPage) bufferPool.getPage(tid, tmp, Permissions.READ_WRITE);
@@ -201,10 +207,18 @@ public class HeapFile implements DbFile {
                 return Collections.singletonList(page);
             }
         }
+        // no empty slot found, create a new page
+        // first write empty page data to disk
+        BufferedOutputStream bw = new BufferedOutputStream(new FileOutputStream(heapFile, true));
+        byte[] emptyData = HeapPage.createEmptyPageData();
+        bw.write(emptyData);
+        bw.close();
+
+        // new page in memory
         HeapPage newPage = new HeapPage(new HeapPageId(getId(), numPages), HeapPage.createEmptyPageData());
-        writePage(newPage);
-        newPage = (HeapPage) bufferPool.getPage(tid, new HeapPageId(getId(), numPages), Permissions.READ_WRITE);
         newPage.insertTuple(t);
+        // return new page as dirty page
+        // let the buffer pool know
         return Collections.singletonList(newPage);
     }
 
@@ -218,6 +232,7 @@ public class HeapFile implements DbFile {
         RecordId rid = t.getRecordId();
         HeapPage page = (HeapPage) bufferPool.getPage(tid, rid.getPageId(), Permissions.READ_WRITE);
         page.deleteTuple(t);
+//        t.setRecordId(null);
 
         return new ArrayList<Page>(Collections.singletonList((Page) page));
     }
