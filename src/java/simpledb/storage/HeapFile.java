@@ -28,7 +28,7 @@ public class HeapFile implements DbFile {
 
         private int currPgNo;
         private HeapPage currPage;
-        private Iterator<Tuple> it;
+        private Iterator<Tuple> currIt;
 
         private boolean opened;
 
@@ -40,19 +40,18 @@ public class HeapFile implements DbFile {
 
             this.currPgNo = 0;
             this.currPage = null;
-            this.it = null;
+            this.currIt = null;
             this.opened = false;
         }
 
-        private boolean canReadNextPage() throws DbException, TransactionAbortedException {
+        private Iterator<Tuple> canReadNextPage() throws DbException, TransactionAbortedException {
             if (currPgNo < numPg) {
                 HeapPageId pid = new HeapPageId(tableId, currPgNo);
                 currPage = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
-                it = currPage.iterator();
                 currPgNo++;
-                return true;
+                return currPage.iterator();
             }
-            return false;
+            return null;
         }
 
         @Override
@@ -60,12 +59,12 @@ public class HeapFile implements DbFile {
             if (!opened) {
                 return null;
             }
-            if (it != null && it.hasNext()) {
-                return it.next();
+            if (currIt != null && currIt.hasNext()) {
+                return currIt.next();
             }
-            if (canReadNextPage()) {
-                if (it != null && it.hasNext()) {
-                    return it.next();
+            while ((currIt = canReadNextPage()) != null) {
+                if (currIt.hasNext()) {
+                    return currIt.next();
                 }
             }
             return null;
@@ -73,7 +72,7 @@ public class HeapFile implements DbFile {
 
         @Override
         public void open() throws DbException, TransactionAbortedException {
-            canReadNextPage();
+            currIt = canReadNextPage();
             opened = true;
         }
 
@@ -81,14 +80,14 @@ public class HeapFile implements DbFile {
         public void rewind() throws DbException, TransactionAbortedException {
             currPgNo = 0;
             currPage = null;
-            it = null;
+            currIt = null;
         }
 
         @Override
         public void close() {
             super.close();
             opened = false;
-            it = null;
+            currIt = null;
             currPage = null;
             tid = null;
         }
@@ -157,7 +156,7 @@ public class HeapFile implements DbFile {
             RandomAccessFile raf = new RandomAccessFile(heapFile, "rw");
             raf.seek((long) pageNo * pageSize);
             raf.readFully(data, 0, pageSize);
-//            System.out.println("pageSize: " + pageSize + " pageNum: " + pageNo + " fileSize: " + heapFile.length());
+            raf.close();
             return new HeapPage((HeapPageId) pid, data);
         } catch (IOException e) {
             e.printStackTrace();
@@ -169,6 +168,11 @@ public class HeapFile implements DbFile {
     public void writePage(Page page) throws IOException {
         // some code goes here
         // not necessary for lab1
+        RandomAccessFile raf = new RandomAccessFile(heapFile, "rw");
+        int offset = page.getId().getPageNumber() * BufferPool.getPageSize();
+        raf.seek(offset);
+        raf.write(page.getPageData());
+        raf.close();
     }
 
     /**
@@ -177,23 +181,45 @@ public class HeapFile implements DbFile {
     public int numPages() {
         // some code goes here
 //        return 0;
-        return (int) (heapFile.length() / BufferPool.getPageSize());
+        int len = (int) heapFile.length();
+        return len / BufferPool.getPageSize();
     }
 
     // see DbFile.java for javadocs
     public List<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
-        return null;
+//        return null;
         // not necessary for lab1
+        BufferPool bufferPool = Database.getBufferPool();
+        int numPages = numPages();
+        for (int i = 0; i < numPages; i++) {
+            PageId tmp = new HeapPageId(getId(), i);
+            HeapPage page = (HeapPage) bufferPool.getPage(tid, tmp, Permissions.READ_WRITE);
+            if (page.getNumEmptySlots() > 0) {
+                page.insertTuple(t);
+                return Collections.singletonList(page);
+            }
+        }
+        HeapPage newPage = new HeapPage(new HeapPageId(getId(), numPages), HeapPage.createEmptyPageData());
+        writePage(newPage);
+        newPage = (HeapPage) bufferPool.getPage(tid, new HeapPageId(getId(), numPages), Permissions.READ_WRITE);
+        newPage.insertTuple(t);
+        return Collections.singletonList(newPage);
     }
 
     // see DbFile.java for javadocs
     public ArrayList<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
         // some code goes here
-        return null;
+//        return null;
         // not necessary for lab1
+        BufferPool bufferPool = Database.getBufferPool();
+        RecordId rid = t.getRecordId();
+        HeapPage page = (HeapPage) bufferPool.getPage(tid, rid.getPageId(), Permissions.READ_WRITE);
+        page.deleteTuple(t);
+
+        return new ArrayList<Page>(Collections.singletonList((Page) page));
     }
 
     // see DbFile.java for javadocs
