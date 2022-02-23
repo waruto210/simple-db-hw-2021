@@ -2,11 +2,9 @@ package simpledb.execution;
 
 import simpledb.common.Type;
 import simpledb.storage.Field;
-import simpledb.storage.IntField;
 import simpledb.storage.Tuple;
 import simpledb.storage.TupleDesc;
 
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -15,13 +13,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public class StringAggregator implements Aggregator {
 
     private static final long serialVersionUID = 1L;
-    private int gbField;
-    private Type gbFieldType;
-    private int aField;
-    private Op what;
-    private TupleDesc td;
-    private Tuple result;
-    private ConcurrentHashMap<Field, Tuple> groupResults;
+    private final int gbField;
+    private final int aField;
+    private final Op what;
+    private final TupleDesc td;
+    private AggRecord result;
+    private ConcurrentHashMap<Field, AggRecord> groupResults;
 
     /**
      * Aggregate constructor
@@ -35,13 +32,11 @@ public class StringAggregator implements Aggregator {
     public StringAggregator(int gbField, Type gbFieldType, int aField, Op what) {
         // some code goes here
         this.gbField = gbField;
-        this.gbFieldType = gbFieldType;
-        this.aField = aField;
         this.what = what;
+        this.aField = aField;
         if (gbField == NO_GROUPING) {
             this.td = new TupleDesc(new Type[]{Type.INT_TYPE});
-            result = new Tuple(td);
-            result.setField(0, new IntField(0));
+            result = new AggRecord(what, aField, td);
         } else {
             this.td = new TupleDesc(new Type[]{gbFieldType, Type.INT_TYPE});
             this.groupResults = new ConcurrentHashMap<>(16);
@@ -54,25 +49,18 @@ public class StringAggregator implements Aggregator {
      */
     public void mergeTupleIntoGroup(Tuple tup) {
         // some code goes here
-        switch (what) {
-            case COUNT:
-                if (gbField == NO_GROUPING) {
-                    result.setField(0, new IntField(((IntField)result.getField(0)).getValue() + 1));
-                } else {
-                    Field gbVal = tup.getField(gbField);
-                    if (groupResults.containsKey(gbVal)) {
-                        groupResults.get(gbVal).setField(1,
-                                new IntField(((IntField)groupResults.get(gbVal).getField(1)).getValue() + 1));
-                    } else {
-                        Tuple newTup = new Tuple(td);
-                        newTup.setField(0, gbVal);
-                        newTup.setField(1, new IntField(1));
-                        groupResults.put(gbVal, newTup);
-                    }
-                }
-                break;
-            default:
-                System.out.println("unsupported operation");
+        if (gbField == NO_GROUPING) {
+            result.mergeOne(tup);
+        } else {
+            Field gbFieldValue = tup.getField(gbField);
+            if (groupResults.containsKey(gbFieldValue)) {
+                AggRecord record = groupResults.get(gbFieldValue);
+                record.mergeOne(tup);
+            } else {
+                AggRecord record = new AggRecord(what, aField, td, gbFieldValue);
+                record.mergeOne(tup);
+                groupResults.put(gbFieldValue, record);
+            }
         }
     }
 
@@ -87,21 +75,21 @@ public class StringAggregator implements Aggregator {
     public OpIterator iterator() {
         // some code goes here
 //        throw new UnsupportedOperationException("please implement me for lab2");
-        Tuple[] tuples = null;
+        Tuple[] resultTuples;
         int numTuples = 1;
         if (gbField != NO_GROUPING) {
             numTuples = groupResults.size();
         }
-        tuples = new Tuple[numTuples];
+        resultTuples = new Tuple[numTuples];
         if (gbField == NO_GROUPING) {
-            tuples[0] = result;
+            resultTuples[0] = result.getResultTuple();
         } else {
             int i = 0;
-            for (ConcurrentHashMap.Entry<Field, Tuple> entry: groupResults.entrySet()) {
-                tuples[i++] = entry.getValue();
+            for (ConcurrentHashMap.Entry<Field, AggRecord> entry: groupResults.entrySet()) {
+                resultTuples[i++] = entry.getValue().getResultTuple();
             }
         }
-        return new IntegerAggregator.AggResultIterator(tuples, td);
+        return new AggResultIterator(resultTuples, td);
     }
 
 }

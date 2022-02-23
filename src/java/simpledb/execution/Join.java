@@ -134,11 +134,7 @@ public class Join extends Operator {
             }
         }
 
-        if (currLeft == null) {
-            return null;
-        }
-
-        while (currLeft != null || child1.hasNext()) {
+        while (currLeft != null) {
             while (child2.hasNext()) {
                 Tuple t2 = child2.next();
                 if (p.filter(currLeft, t2)) {
