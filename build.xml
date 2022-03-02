@@ -27,6 +27,11 @@
         <pathelement location="${lib}/slf4j-log4j12-1.6.1.jar"/>
         <pathelement location="${lib}/log4j-1.2.17.jar"/>
         <pathelement location="${lib}/jzlib-1.0.7.jar"/>
+        <pathelement location="${lib}/functionalj-core-0.5.5.0.jar" />
+        <pathelement location="${lib}/functionalj-types-0.5.5.0.jar"/>
+        <pathelement location="${lib}/functionalj-elm-0.5.5.0.jar"/>
+        <pathelement location="${lib}/functionalj-store-0.5.5.0.jar"/>
+        <pathelement location="${lib}/functionalj-all-0.5.5.0.jar"/>
     </path>
 
     <path id="classpath.test">
