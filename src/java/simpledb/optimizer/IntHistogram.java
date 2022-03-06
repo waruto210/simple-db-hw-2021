@@ -75,7 +75,10 @@ public class IntHistogram {
         this.max = max;
         int range = max - min + 1;
         this.step = (range + targetBuckets - 1 ) / targetBuckets;
-        this.numBuckets = (range + step - 1) / step;
+        this.numBuckets = targetBuckets;
+//        System.out.println("range + step: " + (range + step));
+//        System.out.println("targetBuckets: " + targetBuckets + " min: " + min + " max: "
+//                + max + " step: " + step + " numBuckets: " + numBuckets);
         this.buckets = new Bucket[this.numBuckets];
         for (int i = 0; i < this.numBuckets; i++) {
             int left = min + i * step;

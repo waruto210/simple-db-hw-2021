@@ -130,7 +130,10 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic
             // nested-loops join.
-            return -1.0;
+            double ioCost = cost1 + card1 * cost2;
+            int cpuCost = card1 * card2;
+            return ioCost + cpuCost;
+
         }
     }
 
@@ -176,7 +179,32 @@ public class JoinOptimizer {
                                                    Map<String, Integer> tableAliasToId) {
         int card = 1;
         // some code goes here
-        return card <= 0 ? 1 : card;
+
+        switch (joinOp) {
+            case EQUALS:
+                if (t1pkey) {
+                    card = card2;
+                } else if (t2pkey) {
+                    card = card1;
+                } else {
+                    // no pk, return the larger card
+                    card = Math.max(card1, card2);
+                }
+                break;
+            case NOT_EQUALS:
+                card = (card1 * card2) / 2;
+                break;
+            case GREATER_THAN:
+            case LESS_THAN:
+            case LESS_THAN_OR_EQ:
+            case GREATER_THAN_OR_EQ:
+                card = (int) (card1 * card2 * 0.3);
+                break;
+            default:
+                System.out.println("not supported");
+
+        }
+        return card;
     }
 
     /**
@@ -238,7 +266,32 @@ public class JoinOptimizer {
 
         // some code goes here
         //Replace the following
-        return joins;
+        int numNodes = joins.size();
+
+        PlanCache pc = new PlanCache();
+
+        for (int size = 1; size <= numNodes; size++) {
+           Set<Set<LogicalJoinNode>> sizedSubsets = enumerateSubsets(joins, size);
+           for (Set<LogicalJoinNode> subset: sizedSubsets) {
+               CostCard bestCard = new CostCard();
+               bestCard.cost = Double.MAX_VALUE;
+               for (LogicalJoinNode toRemoveNode: subset) {
+                   CostCard card = computeCostAndCardOfSubplan(stats, filterSelectivities,
+                           toRemoveNode, subset, bestCard.cost, pc);
+                   if (card != null && card.cost < bestCard.cost) {
+                       bestCard = card;
+                   }
+               }
+               pc.addPlan(subset, bestCard.cost, bestCard.card, bestCard.plan);
+           }
+
+        }
+
+        if (explain) {
+            printJoins(joins, pc, stats, filterSelectivities);
+        }
+
+        return pc.getOrder(new HashSet<>(joins));
     }
 
     // ===================== Private Methods =================================
