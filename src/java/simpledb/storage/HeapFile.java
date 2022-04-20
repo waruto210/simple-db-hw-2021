@@ -197,25 +197,22 @@ public class HeapFile implements DbFile {
 //        return null;
         // not necessary for lab1
         BufferPool bufferPool = Database.getBufferPool();
-        int numPages = numPages();
         // found the first page that has empty slot
-        for (int i = 0; i < numPages; i++) {
+        for (int i = 0; i < numPages(); i++) {
             PageId tmp = new HeapPageId(getId(), i);
             HeapPage page = (HeapPage) bufferPool.getPage(tid, tmp, Permissions.READ_WRITE);
             if (page.getNumEmptySlots() > 0) {
                 page.insertTuple(t);
                 return Collections.singletonList(page);
             }
+            bufferPool.unsafeReleasePage(tid, page.getId());
+
         }
         // no empty slot found, create a new page
-        // first write empty page data to disk
-        BufferedOutputStream bw = new BufferedOutputStream(new FileOutputStream(heapFile, true));
-        byte[] emptyData = HeapPage.createEmptyPageData();
-        bw.write(emptyData);
-        bw.close();
-
         // new page in memory
-        HeapPage newPage = new HeapPage(new HeapPageId(getId(), numPages), HeapPage.createEmptyPageData());
+        HeapPage newPage = new HeapPage(new HeapPageId(getId(), numPages()), HeapPage.createEmptyPageData());
+        writePage(newPage);
+        newPage = (HeapPage) bufferPool.getPage(tid, newPage.getId(), Permissions.READ_WRITE);
         newPage.insertTuple(t);
         // return new page as dirty page
         // let the buffer pool know
