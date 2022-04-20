@@ -173,11 +173,13 @@ public class HeapFile implements DbFile {
     public void writePage(Page page) throws IOException {
         // some code goes here
         // not necessary for lab1
-        RandomAccessFile raf = new RandomAccessFile(heapFile, "rw");
-        int offset = page.getId().getPageNumber() * BufferPool.getPageSize();
-        raf.seek(offset);
-        raf.write(page.getPageData());
-        raf.close();
+        synchronized (heapFile) {
+            RandomAccessFile raf = new RandomAccessFile(heapFile, "rw");
+            int offset = page.getId().getPageNumber() * BufferPool.getPageSize();
+            raf.seek(offset);
+            raf.write(page.getPageData());
+            raf.close();
+        }
     }
 
     /**
@@ -186,8 +188,10 @@ public class HeapFile implements DbFile {
     public int numPages() {
         // some code goes here
 //        return 0;
-        int len = (int) heapFile.length();
-        return len / BufferPool.getPageSize();
+        synchronized (heapFile) {
+            int len = (int) heapFile.length();
+            return len / BufferPool.getPageSize();
+        }
     }
 
     // see DbFile.java for javadocs

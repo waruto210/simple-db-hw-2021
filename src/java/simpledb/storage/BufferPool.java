@@ -6,8 +6,8 @@ import simpledb.transaction.TransactionId;
 
 import java.io.*;
 
-import java.util.LinkedList;
 import java.util.List;
+import java.util.Random;
 import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,6 +23,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Threadsafe, all fields are final
  */
 public class BufferPool {
+
+    private static final long TIMEOUT_BASE = 500;
+    private static final int TIMEOUT_GAP = 200;
     /** Bytes per page, including header. */
     private static final int DEFAULT_PAGE_SIZE = 4096;
 
@@ -35,7 +38,7 @@ public class BufferPool {
 
     private final int numPages;
     private final ConcurrentHashMap<PageId, Page> pagePool;
-    private Vector<PageId> pageList;
+    private Vector<PageId> pageQueue;
     private PageLockManager pageLockManager;
 
     /**
@@ -47,7 +50,7 @@ public class BufferPool {
         // some code goes here
         this.numPages = numPages;
         this.pagePool = new ConcurrentHashMap<>(numPages);
-        this.pageList = new Vector<>(numPages);
+        this.pageQueue = new Vector<>(numPages);
         this.pageLockManager = new PageLockManager();
     }
 
@@ -84,23 +87,36 @@ public class BufferPool {
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
 
+        // some code goes here
+        long start = System.currentTimeMillis();
+        long timeout = new Random().nextInt(TIMEOUT_GAP) + TIMEOUT_BASE;
+
         PageLockType lockType = getLockType(perm);
         while (!pageLockManager.acquireLock(tid, pid, lockType)) {
+            if (System.currentTimeMillis() - start > timeout) {
+                throw new TransactionAbortedException();
+            }
             pageLockManager.acquireLock(tid, pid, lockType);
         }
 
-        if (pagePool.containsKey(pid)) {
-            pageList.remove(pid);
-            pageList.add(pid);
-            return pagePool.get(pid);
+        synchronized (pagePool) {
+            if (pagePool.containsKey(pid)) {
+                pageQueue.remove(pid);
+                pageQueue.add(pid);
+                return pagePool.get(pid);
+            }
         }
+
         if (pagePool.size() == numPages) {
             evictPage();
         }
-        Page page = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
-        pagePool.put(pid, page);
-        pageList.add(pid);
-        return page;
+        synchronized (pagePool) {
+            Page page = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+            pagePool.put(pid, page);
+            pageQueue.add(pid);
+            return page;
+        }
+
     }
 
     private static PageLockType getLockType(Permissions perm) {
@@ -140,6 +156,7 @@ public class BufferPool {
         // some code goes here
         // not necessary for lab1|lab2
 //        pageLockManager.releaseLocks(tid);
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
@@ -160,6 +177,22 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid, boolean commit) {
         // some code goes here
         // not necessary for lab1|lab2
+        try {
+            if (commit) {
+                flushPages(tid);
+            } else {
+                restorePages(tid);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // release all locks
+        for (PageId pid : pagePool.keySet()) {
+            if (holdsLock(tid, pid)) {
+                pageLockManager.releaseLock(tid, pid);
+            }
+        }
     }
 
     /**
@@ -192,7 +225,7 @@ public class BufferPool {
                         evictPage();
                     }
                     // add new dirty page to bufferPool
-                    pageList.add(p.getId());
+                    pageQueue.add(p.getId());
                     pagePool.put(p.getId(), p);
                 }
             }
@@ -250,7 +283,7 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
-        pageList.remove(pid);
+        pageQueue.remove(pid);
         pagePool.remove(pid);
     }
 
@@ -270,10 +303,29 @@ public class BufferPool {
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
+    public synchronized void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        for (PageId pid: pagePool.keySet()) {
+            Page p = pagePool.get(pid);
+            if (p.isDirty() == tid) {
+                flushPage(pid);
+            }
+        }
     }
+
+    /** Read all pages of the specified transaction from disk.
+     */
+    public synchronized void restorePages(TransactionId tid) throws IOException {
+        for (PageId pid: pagePool.keySet()) {
+            Page p = pagePool.get(pid);
+            if (p.isDirty() == tid) {
+                Page cleanPage = Database.getCatalog().getDatabaseFile(p.getId().getTableId()).readPage(pid);
+                pagePool.put(pid, cleanPage);
+            }
+        }
+    }
+
 
     /**
      * Discards a page from the buffer pool.
@@ -282,15 +334,19 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
-        PageId pid = pageList.remove(0);
-        if (pid != null) {
-            try {
-                flushPage(pid);
-                pagePool.remove(pid);
-            } catch (IOException e) {
-                e.printStackTrace();
+//        try {
+            for (PageId pid: pageQueue) {
+                Page page = pagePool.get(pid);
+                if (page.isDirty() == null) {
+                    discardPage(pid);
+                    return;
+                }
             }
-        }
+            throw new DbException("all pages are dirty");
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+
     }
 
 }
