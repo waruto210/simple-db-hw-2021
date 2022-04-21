@@ -364,7 +364,7 @@ public class BTreeUtility {
 	}
 
 	/**
-	 * creates a *non* random B+ tree file for testing
+	 * creates a *non* random B+ tree file for testing, add rows of tuples
 	 * @param columns - number of columns
 	 * @param rows - number of rows
 	 * @param columnSpecification - optional column specification
