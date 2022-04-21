@@ -24,8 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class BufferPool {
 
-    private static final long TIMEOUT_BASE = 500;
-    private static final int TIMEOUT_GAP = 200;
+    private static final long TIMEOUT_BASE = 800;
+    private static final int TIMEOUT_GAP = 600;
     /** Bytes per page, including header. */
     private static final int DEFAULT_PAGE_SIZE = 4096;
 
@@ -96,7 +96,6 @@ public class BufferPool {
             if (System.currentTimeMillis() - start > timeout) {
                 throw new TransactionAbortedException();
             }
-            pageLockManager.acquireLock(tid, pid, lockType);
         }
 
         synchronized (pagePool) {
@@ -107,10 +106,10 @@ public class BufferPool {
             }
         }
 
-        if (pagePool.size() == numPages) {
-            evictPage();
-        }
         synchronized (pagePool) {
+            if (pagePool.size() == numPages) {
+                evictPage();
+            }
             Page page = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
             pagePool.put(pid, page);
             pageQueue.add(pid);
@@ -321,6 +320,7 @@ public class BufferPool {
             Page p = pagePool.get(pid);
             if (p.isDirty() == tid) {
                 Page cleanPage = Database.getCatalog().getDatabaseFile(p.getId().getTableId()).readPage(pid);
+                cleanPage.markDirty(false, null);
                 pagePool.put(pid, cleanPage);
             }
         }
