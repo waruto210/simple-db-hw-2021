@@ -96,12 +96,12 @@ public class BTreeFileInsertTest extends SimpleDbTestBase {
 		int tableid = empty.getId();
 		int keyField = 0;
 
-		// create the internal page
+		// create a full internal page
 		BTreePageId leftPageId = new BTreePageId(tableid, 2, BTreePageId.INTERNAL);
 		BTreeInternalPage leftPage = BTreeUtility.createRandomInternalPage(leftPageId, keyField, BTreePageId.LEAF,
 				0, BTreeUtility.MAX_RAND_VALUE, 3);
 				
-		// create the parent page
+		// create a empty parent page
 		BTreePageId parentId = new BTreePageId(tableid, 1, BTreePageId.INTERNAL);
 		BTreeInternalPage parent = new BTreeInternalPage(parentId, 
 				BTreeInternalPage.createEmptyPageData(), keyField);
@@ -113,8 +113,10 @@ public class BTreeFileInsertTest extends SimpleDbTestBase {
 		Map<PageId, Page> dirtypages = new HashMap<>();
 		dirtypages.put(leftPageId, leftPage);
 		dirtypages.put(parentId, parent);
+		// split the full internal page
 		BTreeInternalPage page = empty.splitInternalPage(tid, dirtypages, leftPage, field);
 		BTreeInternalPage otherPage;
+		// parent中只有1个entry，就是split时push到其中mid key
 		assertEquals(1, parent.getNumEntries());
 		BTreeEntry parentEntry = parent.iterator().next();
 		if(parentEntry.getLeftChild().equals(page.getId())) {

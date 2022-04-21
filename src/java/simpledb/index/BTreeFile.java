@@ -262,8 +262,60 @@ public class BTreeFile implements DbFile {
 		// the new entry.  getParentWithEmtpySlots() will be useful here.  Don't forget to update
 		// the sibling pointers of all the affected leaf pages.  Return the page into which a 
 		// tuple with the given key field should be inserted.
-        return null;
-		
+		BTreeLeafPage newRightLeafPage = (BTreeLeafPage) getEmptyPage(tid, dirtypages, BTreePageId.LEAF);
+		int half = page.getMaxTuples() / 2;
+		Iterator<Tuple> leftReverseIterator = page.reverseIterator();
+		Tuple[] tuples = new Tuple[half];
+		int cnt = 0;
+		// 移动一半tuple右侧新page
+		while (leftReverseIterator.hasNext() && half > 0) {
+			tuples[cnt++] = leftReverseIterator.next();
+			half--;
+		}
+		// 从左侧page中删除并插入右侧page
+		for (Tuple t: tuples) {
+			page.deleteTuple(t);
+			newRightLeafPage.insertTuple(t);
+		}
+
+		// 修改sibling指针
+		BTreePageId preRightSiblingId = page.getRightSiblingId();
+
+		// 修改当前page的rightSibling
+		page.setRightSiblingId(newRightLeafPage.getId());
+		// 修改新page的right/leftSibling
+		newRightLeafPage.setLeftSiblingId(page.getId());
+		newRightLeafPage.setRightSiblingId(preRightSiblingId);
+
+		// 修改原rightSibling的leftSibling
+		if (preRightSiblingId != null) {
+			BTreeLeafPage preRightSiblingPage = (BTreeLeafPage)
+					getPage(tid, dirtypages, preRightSiblingId, Permissions.READ_WRITE);
+			preRightSiblingPage.setLeftSiblingId(newRightLeafPage.getId());
+		}
+
+		// 获取copy到parent的key
+		// 判断是插入到左侧还是右侧page
+		boolean insertToRight = true;
+		if (tuples[cnt - 1].getField(keyField).compare(Op.GREATER_THAN, field)) {
+			// 如果右侧第一个元素的key大于field，则插入到左侧
+			insertToRight = false;
+		}
+		Field keyToParent = tuples[cnt - 1].getField(keyField);
+
+		BTreeInternalPage parentPage = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), keyToParent);
+		BTreePageId parentId = parentPage.getId();
+		// reset parent
+//		page.setParentId(parentPage.getId());
+//		newLeafPage.setParentId(parentPage.getId());
+		updateParentPointer(tid, dirtypages, parentId, page.getId());
+		updateParentPointer(tid, dirtypages, parentId, newRightLeafPage.getId());
+		// insert new entry to parent
+		BTreeEntry entry = new BTreeEntry(keyToParent, page.getId(), newRightLeafPage.getId());
+
+		parentPage.insertEntry(entry);
+
+        return insertToRight ? newRightLeafPage : page;
 	}
 	
 	/**
@@ -300,7 +352,44 @@ public class BTreeFile implements DbFile {
 		// the parent pointers of all the children moving to the new page.  updateParentPointers()
 		// will be useful here.  Return the page into which an entry with the given key field
 		// should be inserted.
-		return null;
+
+		int half = page.getMaxEntries() / 2;
+		BTreeInternalPage newRightPage = (BTreeInternalPage) getEmptyPage(tid, dirtypages, BTreePageId.INTERNAL);
+		Iterator<BTreeEntry> iter = page.reverseIterator();
+		BTreeEntry[] entries = new BTreeEntry[half];
+		int cnt = 0;
+		while (iter.hasNext() && half > 0) {
+			entries[cnt++] = iter.next();
+			half--;
+		}
+
+		BTreeEntry mid = iter.next();
+
+		for (BTreeEntry entry: entries) {
+			page.deleteKeyAndRightChild(entry);
+			newRightPage.insertEntry(entry);
+		}
+		// in order push mid to parent
+		page.deleteKeyAndRightChild(mid);
+
+		Field midKey = mid.getKey();
+		boolean insertToRight = true;
+		if (midKey.compare(Op.GREATER_THAN_OR_EQ, field)) {
+			insertToRight = false;
+		}
+		// update parent of new right page
+		updateParentPointers(tid, dirtypages, newRightPage);
+
+		BTreeInternalPage parentPage = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), midKey);
+		parentPage.insertEntry(new BTreeEntry(midKey, page.getId(), newRightPage.getId()));
+
+		// update the parent of the splitted two internal page
+		BTreePageId parentId = parentPage.getId();
+		updateParentPointer(tid, dirtypages, parentId, page.getId());
+		updateParentPointer(tid, dirtypages, parentId, newRightPage.getId());
+
+
+		return insertToRight ? newRightPage : page;
 	}
 	
 	/**
