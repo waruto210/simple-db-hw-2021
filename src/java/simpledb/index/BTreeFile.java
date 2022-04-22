@@ -199,19 +199,14 @@ public class BTreeFile implements DbFile {
 		if (f == null) {
 			return findLeafPage(tid, dirtypages, internalIter.next().getLeftChild(), perm, null);
 		}
-		BTreeEntry lastEntry = null;
 		while (internalIter.hasNext()) {
 			BTreeEntry entry = internalIter.next();
-			lastEntry = entry;
 			if(entry.getKey().compare(Op.GREATER_THAN_OR_EQ, f)) {
 				return findLeafPage(tid, dirtypages, entry.getLeftChild(), perm, f);
 			}
 		}
 		// go to right-most
-		if (lastEntry != null) {
-			return findLeafPage(tid, dirtypages, lastEntry.getRightChild(), perm, f);
-		}
-		return null;
+		return findLeafPage(tid, dirtypages, page.reverseIterator().next().getRightChild(), perm, f);
 	}
 	
 	/**
@@ -277,15 +272,8 @@ public class BTreeFile implements DbFile {
 			page.deleteTuple(t);
 			newRightLeafPage.insertTuple(t);
 		}
-
 		// 修改sibling指针
 		BTreePageId preRightSiblingId = page.getRightSiblingId();
-
-		// 修改当前page的rightSibling
-		page.setRightSiblingId(newRightLeafPage.getId());
-		// 修改新page的right/leftSibling
-		newRightLeafPage.setLeftSiblingId(page.getId());
-		newRightLeafPage.setRightSiblingId(preRightSiblingId);
 
 		// 修改原rightSibling的leftSibling
 		if (preRightSiblingId != null) {
@@ -293,27 +281,35 @@ public class BTreeFile implements DbFile {
 					getPage(tid, dirtypages, preRightSiblingId, Permissions.READ_WRITE);
 			preRightSiblingPage.setLeftSiblingId(newRightLeafPage.getId());
 		}
+		// 修改当前page的rightSibling
+		page.setRightSiblingId(newRightLeafPage.getId());
+		// 修改新page的right/leftSibling
+		newRightLeafPage.setLeftSiblingId(page.getId());
+		newRightLeafPage.setRightSiblingId(preRightSiblingId);
 
 		// 获取copy到parent的key
 		// 判断是插入到左侧还是右侧page
 		boolean insertToRight = true;
-		if (tuples[cnt - 1].getField(keyField).compare(Op.GREATER_THAN, field)) {
+		Field keyToParent = newRightLeafPage.iterator().next().getField(keyField);
+		if (keyToParent.compare(Op.GREATER_THAN_OR_EQ, field)) {
 			// 如果右侧第一个元素的key大于field，则插入到左侧
 			insertToRight = false;
 		}
-		Field keyToParent = tuples[cnt - 1].getField(keyField);
 
 		BTreeInternalPage parentPage = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), keyToParent);
 		BTreePageId parentId = parentPage.getId();
 		// reset parent
 //		page.setParentId(parentPage.getId());
 //		newLeafPage.setParentId(parentPage.getId());
-		updateParentPointer(tid, dirtypages, parentId, page.getId());
-		updateParentPointer(tid, dirtypages, parentId, newRightLeafPage.getId());
+//		updateParentPointer(tid, dirtypages, parentId, page.getId());
+//		updateParentPointer(tid, dirtypages, parentId, newRightLeafPage.getId());
 		// insert new entry to parent
 		BTreeEntry entry = new BTreeEntry(keyToParent, page.getId(), newRightLeafPage.getId());
 
 		parentPage.insertEntry(entry);
+//		updateParentPointers(tid, dirtypages, parentPage);
+		updateParentPointer(tid, dirtypages, parentId, page.getId());
+		updateParentPointer(tid, dirtypages, parentId, newRightLeafPage.getId());
 
         return insertToRight ? newRightLeafPage : page;
 	}
@@ -377,16 +373,14 @@ public class BTreeFile implements DbFile {
 		if (midKey.compare(Op.GREATER_THAN_OR_EQ, field)) {
 			insertToRight = false;
 		}
-		// update parent of new right page
-		updateParentPointers(tid, dirtypages, newRightPage);
+
 
 		BTreeInternalPage parentPage = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), midKey);
 		parentPage.insertEntry(new BTreeEntry(midKey, page.getId(), newRightPage.getId()));
 
 		// update the parent of the splitted two internal page
-		BTreePageId parentId = parentPage.getId();
-		updateParentPointer(tid, dirtypages, parentId, page.getId());
-		updateParentPointer(tid, dirtypages, parentId, newRightPage.getId());
+		updateParentPointers(tid, dirtypages, newRightPage);
+		updateParentPointers(tid, dirtypages, parentPage);
 
 		return insertToRight ? newRightPage : page;
 	}
@@ -952,15 +946,15 @@ public class BTreeFile implements DbFile {
 		}
 		BTreePageId rightSlibling = rightPage.getRightSiblingId();
 
-		leftPage.setRightSiblingId(rightSlibling);
 		if (rightSlibling != null) {
 			BTreeLeafPage rightSliblingPage = (BTreeLeafPage) getPage(tid, dirtypages,
 					rightSlibling, Permissions.READ_WRITE);
 			rightSliblingPage.setLeftSiblingId(leftPage.getId());
 		}
+		leftPage.setRightSiblingId(rightSlibling);
+		deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
 
 		setEmptyPage(tid, dirtypages, rightPage.getId().getPageNumber());
-		deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
 	}
 
 	/**
@@ -1013,9 +1007,9 @@ public class BTreeFile implements DbFile {
 			rightPage.deleteKeyAndLeftChild(entry);
 			leftPage.insertEntry(entry);
 		}
-		setEmptyPage(tid, dirtypages, rightPage.getId().getPageNumber());
 		updateParentPointers(tid, dirtypages, leftPage);
 		deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
+		setEmptyPage(tid, dirtypages, rightPage.getId().getPageNumber());
 	}
 
 	

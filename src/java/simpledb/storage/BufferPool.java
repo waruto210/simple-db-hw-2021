@@ -1,6 +1,8 @@
 package simpledb.storage;
 
 import simpledb.common.*;
+import simpledb.transaction.PageLockManager;
+import simpledb.transaction.PageLockType;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
@@ -98,7 +100,7 @@ public class BufferPool {
             }
         }
 
-        synchronized (pagePool) {
+        synchronized (this) {
             if (pagePool.containsKey(pid)) {
                 pageQueue.remove(pid);
                 pageQueue.add(pid);
@@ -106,7 +108,7 @@ public class BufferPool {
             }
         }
 
-        synchronized (pagePool) {
+        synchronized (this) {
             if (pagePool.size() == numPages) {
                 evictPage();
             }
@@ -181,6 +183,7 @@ public class BufferPool {
                     Page p = pagePool.get(pid);
                     if (p.isDirty() == tid) {
                         flushPage(pid);
+                        p.markDirty(false, null);
                         p.setBeforeImage();
                     }
                 }
@@ -250,7 +253,7 @@ public class BufferPool {
      * @param tid the transaction deleting the tuple.
      * @param t the tuple to delete
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
+    public void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
@@ -273,7 +276,9 @@ public class BufferPool {
         // some code goes here
         // not necessary for lab1
         for (PageId pid: pagePool.keySet()) {
-            flushPage(pid);
+            if (pagePool.get(pid).isDirty() != null) {
+                flushPage(pid);
+            }
         }
     }
 
@@ -306,7 +311,6 @@ public class BufferPool {
             Database.getLogFile().force();
             Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(page);
         }
-        page.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.

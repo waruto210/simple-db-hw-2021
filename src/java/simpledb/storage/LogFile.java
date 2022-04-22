@@ -472,7 +472,7 @@ public class LogFile {
                     switch (recordType) {
                         case UPDATE_RECORD:
                             Page beforeImage = readPageData(raf);
-                            Page afterImage = readPageData(raf);
+                            readPageData(raf);
                             PageId pageId = beforeImage.getId();
                             if (recordTid == tid.getId() && !pages.contains(pageId)) {
                                 pages.add(pageId);
@@ -522,6 +522,61 @@ public class LogFile {
             synchronized (this) {
                 recoveryUndecided = false;
                 // some code goes here
+
+                raf = new RandomAccessFile(logFile, "rw");
+                Set<Long> winnerTids = new HashSet<Long>();
+                Map<Long, List<Page>> beforeImages = new HashMap<Long, List<Page>>();
+                Map<Long, List<Page>> afterImages = new HashMap<Long, List<Page>>();
+
+                // seek to last checkpoint
+                long checkPointOffer = raf.readLong();
+                if (checkPointOffer != -1) {
+                    raf.seek(checkPointOffer);
+                }
+
+                while (true) {
+                    int recordType = raf.readInt();
+                    long recordTid = raf.readLong();
+                    switch (recordType) {
+                        case UPDATE_RECORD:
+                            Page beforeImage = readPageData(raf);
+                            Page afterImage = readPageData(raf);
+                            List<Page> l1 = beforeImages.getOrDefault(recordTid, new ArrayList<Page>());
+                            l1.add(beforeImage);
+                            beforeImages.put(recordTid, l1);
+                            List<Page> l2 = afterImages.getOrDefault(recordTid, new ArrayList<Page>());
+                            l2.add(afterImage);
+                            afterImages.put(recordTid, l2);
+                            break;
+                        case COMMIT_RECORD:
+                            winnerTids.add(recordTid);
+                            break;
+                        default:
+                            break;
+                    }
+                    raf.readLong();
+                    if (raf.getFilePointer() == raf.length()) {
+                        break;
+                    }
+                }
+
+                for (long tid : beforeImages.keySet()) {
+                    // redo
+                    if (winnerTids.contains(tid)) {
+                        List<Page> afterImageList = afterImages.get(tid);
+                        for (Page page: afterImageList) {
+                            Database.getCatalog().getDatabaseFile(
+                                    page.getId().getTableId()).writePage(page);
+                        }
+                    } else {
+                        // undo
+                        List<Page> beforeImageList = beforeImages.get(tid);
+                        for (Page page: beforeImageList) {
+                            Database.getCatalog().getDatabaseFile(
+                                    page.getId().getTableId()).writePage(page);
+                        }
+                    }
+                }
             }
          }
     }

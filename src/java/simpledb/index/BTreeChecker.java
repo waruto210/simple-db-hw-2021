@@ -92,6 +92,7 @@ public class BTreeChecker {
             return new SubtreeSummary(bpage, depth);
         } else if (page.getId().pgcateg() == BTreePageId.INTERNAL) {
 
+
             BTreeInternalPage ipage = (BTreeInternalPage) page;
             ipage.checkRep(lowerBound, upperBound, checkOccupancy, depth);
 
