@@ -459,7 +459,42 @@ public class LogFile {
         synchronized (Database.getBufferPool()) {
             synchronized(this) {
                 preAppend();
+//                print();
                 // some code goes here
+                long firstLogRecordOffset = tidToFirstLogRecord.get(tid.getId());
+                raf.seek(firstLogRecordOffset);
+
+                Set<PageId> pages = new HashSet<PageId>();
+                while (true) {
+                    int recordType = raf.readInt();
+                    long recordTid = raf.readLong();
+
+                    switch (recordType) {
+                        case UPDATE_RECORD:
+                            Page beforeImage = readPageData(raf);
+                            Page afterImage = readPageData(raf);
+                            PageId pageId = beforeImage.getId();
+                            if (recordTid == tid.getId() && !pages.contains(pageId)) {
+                                pages.add(pageId);
+                                Database.getBufferPool().discardPage(pageId);
+                                Database.getCatalog().getDatabaseFile(pageId.getTableId()).writePage(beforeImage);
+                            }
+                            break;
+                        case CHECKPOINT_RECORD:
+                            int txnCount = raf.readInt();
+                            while (txnCount-- > 0) {
+                                raf.readLong();
+                                raf.readLong();
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                    raf.readLong();
+                    if (raf.getFilePointer() == raf.length()) {
+                        break;
+                    }
+                }
             }
         }
     }

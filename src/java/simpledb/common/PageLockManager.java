@@ -8,9 +8,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class PageLockManager {
 
-    private class PageRWLock {
-        TransactionId tid;
-        PageLockType lockType;
+    static class PageRWLock {
+        public TransactionId tid;
+        public PageLockType lockType;
 
         public PageRWLock(TransactionId tid, PageLockType lockType) {
             this.tid = tid;
@@ -92,6 +92,29 @@ public class PageLockManager {
         }
 
         return false;
+    }
+
+    public synchronized void releaseAllLocks(TransactionId tid) {
+        Vector<PageId> toRemove = new Vector<>();
+        for (PageId pid: lockMap.keySet()) {
+            Vector<PageRWLock> locksOnPage = lockMap.get(pid);
+            int index = -1;
+            for (int i = 0; i < locksOnPage.size(); i++) {
+                if (locksOnPage.get(i).tid == tid) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index != -1) {
+                locksOnPage.remove(index);
+            }
+            if (locksOnPage.size() == 0) {
+                toRemove.add(pid);
+            }
+        }
+        for (PageId pid: toRemove) {
+            lockMap.remove(pid);
+        }
     }
 
     public synchronized boolean holdsLock(TransactionId tid, PageId pid) {

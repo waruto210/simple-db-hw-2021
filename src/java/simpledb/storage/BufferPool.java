@@ -24,8 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class BufferPool {
 
-    private static final long TIMEOUT_BASE = 800;
-    private static final int TIMEOUT_GAP = 600;
+    private static final long TIMEOUT_BASE = 600;
+    private static final int TIMEOUT_GAP = 200;
     /** Bytes per page, including header. */
     private static final int DEFAULT_PAGE_SIZE = 4096;
 
@@ -38,8 +38,8 @@ public class BufferPool {
 
     private final int numPages;
     private final ConcurrentHashMap<PageId, Page> pagePool;
-    private Vector<PageId> pageQueue;
-    private PageLockManager pageLockManager;
+    private final Vector<PageId> pageQueue;
+    private final PageLockManager pageLockManager;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -154,7 +154,6 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) {
         // some code goes here
         // not necessary for lab1|lab2
-//        pageLockManager.releaseLocks(tid);
         transactionComplete(tid, true);
     }
 
@@ -178,7 +177,13 @@ public class BufferPool {
         // not necessary for lab1|lab2
         try {
             if (commit) {
-                flushPages(tid);
+                for (PageId pid: pagePool.keySet()) {
+                    Page p = pagePool.get(pid);
+                    if (p.isDirty() == tid) {
+                        flushPage(pid);
+                        p.setBeforeImage();
+                    }
+                }
             } else {
                 restorePages(tid);
             }
@@ -187,11 +192,12 @@ public class BufferPool {
         }
 
         // release all locks
-        for (PageId pid : pagePool.keySet()) {
-            if (holdsLock(tid, pid)) {
-                pageLockManager.releaseLock(tid, pid);
-            }
-        }
+//        for (PageId pid : pagePool.keySet()) {
+//            if (holdsLock(tid, pid)) {
+//                pageLockManager.releaseLock(tid, pid);
+//            }
+//        }
+        pageLockManager.releaseAllLocks(tid);
     }
 
     /**
@@ -294,7 +300,10 @@ public class BufferPool {
         // some code goes here
         // not necessary for lab1
         Page page = pagePool.get(pid);
-        if (page.isDirty() != null) {
+        TransactionId dirtier = page.isDirty();
+        if (dirtier != null) {
+            Database.getLogFile().logWrite(dirtier, page.getBeforeImage(), page);
+            Database.getLogFile().force();
             Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(page);
         }
         page.markDirty(false, null);
@@ -320,7 +329,6 @@ public class BufferPool {
             Page p = pagePool.get(pid);
             if (p.isDirty() == tid) {
                 Page cleanPage = Database.getCatalog().getDatabaseFile(p.getId().getTableId()).readPage(pid);
-                cleanPage.markDirty(false, null);
                 pagePool.put(pid, cleanPage);
             }
         }
