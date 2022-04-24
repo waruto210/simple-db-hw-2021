@@ -3,6 +3,8 @@ package simpledb.transaction;
 import simpledb.storage.PageId;
 
 import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
 
 public class PageLockManager {
 
@@ -15,12 +17,6 @@ public class PageLockManager {
     public synchronized boolean acquireLock(TransactionId tid, PageId pid, PageLockType lockType) {
         // the page is not locked
         if (!lockMap.containsKey(pid) || lockMap.get(pid).size() == 0) {
-//            PageRWLock lock = new PageRWLock(tid, lockType);
-//            Vector<PageRWLock> locks = new Vector<>();
-//            locks.add(lock);
-//            lockMap.put(pid, locks);
-//            return true;
-//             HashMap<TransactionId, PageLockType> locksOnPage = new HashMap<>();
              HashMap<TransactionId, PageLockType> locksOnPage = lockMap.getOrDefault(pid, new HashMap<>());
              locksOnPage.put(tid, lockType);
              lockMap.put(pid, locksOnPage);
@@ -74,9 +70,7 @@ public class PageLockManager {
             return false;
         }
         locksOnPage.remove(tid);
-//        if (locksOnPage.size() == 0) {
-//            lockMap.remove(pid);
-//        }
+
         return true;
     }
 
@@ -86,13 +80,16 @@ public class PageLockManager {
         }
     }
 
-    public synchronized boolean holdsLock(TransactionId tid, PageId pid) {
+    public synchronized PageLockType holdsLock(TransactionId tid, PageId pid) {
         if (!lockMap.containsKey(pid)) {
-            return false;
+            return null;
         }
 
         HashMap<TransactionId, PageLockType> locksOnPage = lockMap.get(pid);
-        return locksOnPage.containsKey(tid);
+        if (locksOnPage.containsKey(tid)) {
+            return locksOnPage.get(tid);
+        }
+        return null;
     }
 
 }
