@@ -193,7 +193,7 @@ public class BTreeFile implements DbFile {
 		if (pid.pgcateg() == BTreePageId.LEAF) {
 			return (BTreeLeafPage) getPage(tid, dirtypages, pid, perm);
 		}
-		BTreeInternalPage page = (BTreeInternalPage) getPage(tid, dirtypages, pid, perm);
+		BTreeInternalPage page = (BTreeInternalPage) getPage(tid, dirtypages, pid, Permissions.READ_ONLY);
 		Iterator<BTreeEntry> internalIter =  page.iterator();
 		// find left-most
 		if (f == null) {

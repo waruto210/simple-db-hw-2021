@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class BufferPool {
 
-    private static final long TIMEOUT_BASE = 600;
+    private static final long TIMEOUT_BASE = 1000;
     private static final int TIMEOUT_GAP = 200;
     /** Bytes per page, including header. */
     private static final int DEFAULT_PAGE_SIZE = 4096;
@@ -96,12 +96,10 @@ public class BufferPool {
         PageLockType lockType = getLockType(perm);
         while (!pageLockManager.acquireLock(tid, pid, lockType)) {
             if (System.currentTimeMillis() - start > timeout) {
-//                System.out.println("Transaction " + tid.getId() + " wait for page " + pid.getPageNumber() + " " + perm + "timeout");
                 throw new TransactionAbortedException();
             }
         }
 
-//        System.out.println("Transaction " + tid.getId() + " lock page " + pid.getPageNumber() + " " + perm);
 
         synchronized (this) {
             if (pagePool.containsKey(pid)) {
@@ -182,12 +180,15 @@ public class BufferPool {
         // not necessary for lab1|lab2
         try {
             if (commit) {
-                for (PageId pid: pagePool.keySet()) {
-                    Page p = pagePool.get(pid);
-                    if (p.isDirty() == tid) {
-                        flushPage(pid);
-                        p.markDirty(false, null);
-                        p.setBeforeImage();
+                // 防止pagePool.get(pid)时，该pid已经不在pagePool中，导致p为null
+                synchronized (this) {
+                    for (PageId pid: pagePool.keySet()) {
+                        Page p = pagePool.get(pid);
+                        if (p.isDirty() == tid) {
+                            flushPage(pid);
+                            p.markDirty(false, null);
+                            p.setBeforeImage();
+                        }
                     }
                 }
             } else {
