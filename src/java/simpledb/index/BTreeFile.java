@@ -1020,20 +1020,14 @@ public class BTreeFile implements DbFile {
 		BTreePageId pageId = new BTreePageId(tableid, t.getRecordId().getPageId().getPageNumber(),
 				BTreePageId.LEAF);
 		BTreeLeafPage page = (BTreeLeafPage) getPage(tid, dirtypages, pageId, Permissions.READ_WRITE);
-		int before = page.getNumTuples();
 		page.deleteTuple(t);
 
 		// if the page is below minimum occupancy, get some tuples from its siblings
 		// or merge with one of the siblings
 		int maxEmptySlots = page.getMaxTuples() - page.getMaxTuples()/2; // ceiling
 		if(page.getNumEmptySlots() > maxEmptySlots) {
-//			System.out.println("Transaction " + tid.getId() + " deleted on: " + page.getId().getPageNumber() +
-//					", inter size: " + page.getNumTuples());
 			handleMinOccupancyPage(tid, dirtypages, page);
 		}
-
-//		System.out.println("Transaction " + tid.getId() + " deleted on: " + page.getId().getPageNumber() +
-//				", before size: " + before + ", after size: " + page.getNumTuples());
 
         return new ArrayList<>(dirtypages.values());
 	}

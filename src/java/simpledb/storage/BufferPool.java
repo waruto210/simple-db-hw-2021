@@ -289,7 +289,8 @@ public class BufferPool {
             Page p = pagePool.get(pid);
             if (p.isDirty() != null) {
                 flushPage(pid);
-                // p.markDirty(false, null);，不能加，否则在LogTest，会导致commit时不设置beforeImage
+                p.markDirty(false, null);
+                p.setBeforeImage();
             }
         }
     }
