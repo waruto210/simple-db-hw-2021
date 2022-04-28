@@ -526,10 +526,9 @@ public class LogFile {
                 // some code goes here
 
                 raf = new RandomAccessFile(logFile, "rw");
-                Set<Long> winnerTids = new HashSet<Long>();
+                Set<Long> abortTids = new HashSet<Long>();
                 Set<Long> loserTids = new HashSet<Long>();
-                Map<Long, HashMap<PageId, Page>> beforeImages = new HashMap<Long, HashMap<PageId, Page>>();
-                Map<Long, HashMap<PageId, Page>> afterImages = new HashMap<Long, HashMap<PageId, Page>>();
+                Map<PageId, Page> beforeImages = new HashMap<>();
                 Map<Long, Long> firstLogRecordOffset = new HashMap<Long, Long>();
 
                 // seek to last checkpoint
@@ -552,33 +551,26 @@ public class LogFile {
                     raf.readLong();
                 }
 
+                long afterCheckPointOffer = raf.getFilePointer();
                 // 读checkpoint后面的部分
-
                 while (true) {
                     int recordType = raf.readInt();
                     long recordTid = raf.readLong();
                     switch (recordType) {
                         case UPDATE_RECORD:
-                            Page beforeImage = readPageData(raf);
-                            Page afterImage = readPageData(raf);
-                            HashMap<PageId, Page> l1 = beforeImages.getOrDefault(recordTid, new HashMap<PageId, Page>());
-                            // before image应该用最早出现的
-                            if (!l1.containsKey(beforeImage.getId())) {
-                                l1.put(beforeImage.getId(), beforeImage);
-                            }
-                            beforeImages.put(recordTid, l1);
-                            // redo // after image应该用最后出现的
-                            HashMap<PageId, Page> l2 = afterImages.getOrDefault(recordTid, new HashMap<PageId, Page>());
-                            l2.put(afterImage.getId(), afterImage);
-                            afterImages.put(recordTid, l2);
+                            readPageData(raf);
+                            readPageData(raf);
                             break;
                         case BEGIN_RECORD:
                             loserTids.add(recordTid);
                             break;
                         case COMMIT_RECORD:
-                            winnerTids.add(recordTid);
                             loserTids.remove(recordTid);
                             firstLogRecordOffset.remove(recordTid);
+                            break;
+                        case ABORT_RECORD:
+                            abortTids.add(recordTid);
+                            loserTids.remove(recordTid);
                             break;
                         default:
                             break;
@@ -589,65 +581,74 @@ public class LogFile {
                     }
                 }
 
-                if (firstLogRecordOffset.size() != 0) {
-                    long minOffset = firstLogRecordOffset.values().stream().min(Long::compareTo).get();
-                    raf.seek(minOffset);
-                    while (true) {
-                        int recordType = raf.readInt();
-                        long recordTid = raf.readLong();
-                        switch (recordType) {
-                            case UPDATE_RECORD:
-                                Page beforeImage = readPageData(raf);
-                                Page afterImage = readPageData(raf);
-                                if (loserTids.contains(recordTid)) {
-                                    HashMap<PageId, Page> l1 = beforeImages.getOrDefault(recordTid, new HashMap<PageId, Page>());
-                                    // before image应该用最早出现的
-                                    if (!l1.containsKey(beforeImage.getId())) {
-                                        l1.put(beforeImage.getId(), beforeImage);
-                                        beforeImages.put(recordTid, l1);
-                                    }
-                                }
-                                break;
-                            case CHECKPOINT_RECORD:
-                                int txnCount = raf.readInt();
-                                while (txnCount-- > 0) {
-                                    raf.readLong();
-                                    raf.readLong();
-                                }
-                                break;
-                            default:
-                                break;
-                        }
-                        raf.readLong();
-                        if (raf.getFilePointer() >= checkPointOffer) {
+                raf.seek(afterCheckPointOffer);
+
+                // 读checkpoint后面的部分
+                while (true) {
+                    int recordType = raf.readInt();
+                    long recordTid = raf.readLong();
+                    switch (recordType) {
+                        case UPDATE_RECORD:
+                            readPageData(raf);
+                            Page afterImage = readPageData(raf);
+                            if (!loserTids.contains(recordTid) && !abortTids.contains(recordTid)) {
+                                Database.getCatalog().getDatabaseFile(afterImage.getId().
+                                        getTableId()).writePage(afterImage);
+                            }
                             break;
-                        }
+                        default:
+                            break;
+                    }
+                    raf.readLong();
+                    if (raf.getFilePointer() == raf.length()) {
+                        break;
                     }
                 }
 
-                for (long tid: loserTids) {
-                    if (beforeImages.containsKey(tid)) {
-                        // undo
-                        HashMap<PageId, Page> beforeImageList = beforeImages.get(tid);
-                        for (Page page : beforeImageList.values()) {
-                            Database.getCatalog().getDatabaseFile(
-                                    page.getId().getTableId()).writePage(page);
-                        }
+                int LONG_SIZE = 8;
+
+                long minOffset = 0;
+                if (firstLogRecordOffset.size() != 0) {
+                    minOffset = firstLogRecordOffset.values().stream().min(Long::compareTo).get();
+                }
+                raf.seek(raf.getFilePointer() - LONG_SIZE);
+                long recordOffset = raf.readLong();
+                while (recordOffset > minOffset) {
+                    // seek to record start
+                    raf.seek(recordOffset);
+
+                    int recordType = raf.readInt();
+                    long recordTid = raf.readLong();
+                    switch (recordType) {
+                        case UPDATE_RECORD:
+                            Page beforeImage = readPageData(raf);
+                            Page afterImage = readPageData(raf);
+                            if (loserTids.contains(recordTid)) {
+                                beforeImages.put(beforeImage.getId(), beforeImage);
+                            }
+                            break;
+                        case CHECKPOINT_RECORD:
+                            int txnCount = raf.readInt();
+                            while (txnCount-- > 0) {
+                                raf.readLong();
+                                raf.readLong();
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                    if (recordOffset - 8 > minOffset) {
+                        raf.seek(recordOffset - 8);
+                        recordOffset = raf.readLong();
+                    } else {
+                        break;
                     }
                 }
-
-
-                for (long tid : winnerTids) {
-                    // redo
-                    if (afterImages.containsKey(tid)) {
-                        HashMap<PageId, Page> afterImageList = afterImages.get(tid);
-                        for (Page page: afterImageList.values()) {
-                            Database.getCatalog().getDatabaseFile(
-                                    page.getId().getTableId()).writePage(page);
-                        }
-                    }
+                // undo
+                for (Page page : beforeImages.values()) {
+                    Database.getCatalog().getDatabaseFile(
+                            page.getId().getTableId()).writePage(page);
                 }
-
             }
          }
     }
