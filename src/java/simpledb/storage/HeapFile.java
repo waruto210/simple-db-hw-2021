@@ -95,6 +95,7 @@ public class HeapFile implements DbFile {
 
     private final File heapFile;
     private final TupleDesc td;
+    private int numPage;
 
     /**
      * Constructs a heap file backed by the specified file.
@@ -112,6 +113,7 @@ public class HeapFile implements DbFile {
         }
         this.heapFile = f;
         this.td = td;
+        this.numPage = (int) (f.length() / BufferPool.getPageSize());
     }
 
     /**
@@ -146,16 +148,27 @@ public class HeapFile implements DbFile {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-//        throw new UnsupportedOperationException("implement this");
         return td;
     }
 
     // see DbFile.java for javadocs
     public Page readPage(PageId pid) {
         // some code goes here
-//        return null;
-        int pageSize = BufferPool.getPageSize();
         int pageNo = pid.getPageNumber();
+        if (pageNo >= numPages()) {
+            try {
+                HeapPage newPage = new HeapPage(new HeapPageId(getId(), numPages()), HeapPage.createEmptyPageData());
+//                System.out.println("numPage is:" + numPage);
+                numPage += 1;
+                return newPage;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+        }
+
+        int pageSize = BufferPool.getPageSize();
+
         byte[] data = new byte[pageSize];
         try {
             RandomAccessFile raf = new RandomAccessFile(heapFile, "rw");
@@ -173,13 +186,16 @@ public class HeapFile implements DbFile {
     public void writePage(Page page) throws IOException {
         // some code goes here
         // not necessary for lab1
-        synchronized (heapFile) {
-            RandomAccessFile raf = new RandomAccessFile(heapFile, "rw");
-            int offset = page.getId().getPageNumber() * BufferPool.getPageSize();
-            raf.seek(offset);
-            raf.write(page.getPageData());
-            raf.close();
-        }
+        RandomAccessFile raf = new RandomAccessFile(heapFile, "rw");
+        int pageSize = BufferPool.getPageSize();
+        int offset = page.getId().getPageNumber() * pageSize;
+        raf.seek(offset);
+        raf.write(page.getPageData());
+
+        raf.close();
+
+        numPage = Math.max(numPage, (int) (heapFile.length() / pageSize));
+//        System.out.println("numPage is:" + numPage);
     }
 
     /**
@@ -187,22 +203,18 @@ public class HeapFile implements DbFile {
      */
     public int numPages() {
         // some code goes here
-//        return 0;
-        synchronized (heapFile) {
-            int len = (int) heapFile.length();
-            return len / BufferPool.getPageSize();
-        }
+        // an ugly testcase write pages without invoking the `writePage` method
+        return (int) Math.max(numPage, heapFile.length() / BufferPool.getPageSize());
     }
 
     // see DbFile.java for javadocs
     public List<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
-//        return null;
-        // not necessary for lab1
         BufferPool bufferPool = Database.getBufferPool();
         // found the first page that has empty slot
-        for (int i = 0; i < numPages(); i++) {
+        int i = 0;
+        while (true) {
             PageId tmp = new HeapPageId(getId(), i);
             HeapPage page = (HeapPage) bufferPool.getPage(tid, tmp, Permissions.READ_WRITE);
             if (page.getNumEmptySlots() > 0) {
@@ -210,17 +222,8 @@ public class HeapFile implements DbFile {
                 return Collections.singletonList(page);
             }
             bufferPool.unsafeReleasePage(tid, page.getId());
-
+            i++;
         }
-        // no empty slot found, create a new page
-        // new page in memory
-        HeapPage newPage = new HeapPage(new HeapPageId(getId(), numPages()), HeapPage.createEmptyPageData());
-        writePage(newPage);
-        newPage = (HeapPage) bufferPool.getPage(tid, newPage.getId(), Permissions.READ_WRITE);
-        newPage.insertTuple(t);
-        // return new page as dirty page
-        // let the buffer pool know
-        return Collections.singletonList(newPage);
     }
 
     // see DbFile.java for javadocs
